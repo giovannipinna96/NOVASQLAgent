@@ -1,0 +1,7 @@
+{
+  "sandbox_type": "sql",
+  "db_path": ":memory:",
+  "timeout_seconds": 5,
+  "table_prefix": "sbx_tbl_",
+  "enforce_safety_checks": true
+}

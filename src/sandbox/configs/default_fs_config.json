@@ -1,0 +1,8 @@
+{
+  "sandbox_type": "filesystem",
+  "working_dir": "sandbox_default_fs_work",
+  "timeout_seconds": 10,
+  "memory_limit_mb": 256,
+  "allow_network": false,
+  "python_executable": null
+}
