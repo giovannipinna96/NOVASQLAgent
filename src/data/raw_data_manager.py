@@ -25,6 +25,8 @@ DIRECTORY STRUCTURE & FILE MANAGEMENT:
 
 - All downloaded and extracted datasets should be stored under a clearly defined hierarchical structure:
     Example:
+    NOVASQLAgent/
+     └── 
         data/
         └── raw_data/
             ├── archer_bench/
