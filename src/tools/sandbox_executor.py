@@ -21,11 +21,14 @@ except ImportError:
     SQLSandbox = None # type: ignore
     logging.warning("SandboxExecutor: SQLSandbox not found or importable.")
 
+# For determining PROJECT_ROOT to find the top-level 'config' directory
+import sys
+import time # Already imported below, but good to have near related logic
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(module)s - %(message)s')
 
-DEFAULT_CONFIG_DIR_NAME = "configs"
+DEFAULT_SANDBOX_CONFIG_SUBDIR = "sandbox" # Subdirectory within the main 'config' folder
 
 class SandboxExecutor:
     """
@@ -38,21 +41,25 @@ class SandboxExecutor:
         Initializes the SandboxExecutor.
 
         Args:
-            base_config_path: Path to the directory containing sandbox configuration files.
-                              Defaults to `src/sandbox/configs/` relative to this file's module path,
-                              or a 'configs' subdirectory in the current working directory if module path fails.
+            base_config_path: Path to the directory containing sandbox configuration files
+                              (e.g., 'project_root/config/sandbox').
+                              If None, defaults to 'PROJECT_ROOT/config/sandbox/'.
         """
         if base_config_path:
             self.config_dir = Path(base_config_path)
         else:
-            # Try to determine path relative to this module (src/sandbox/configs)
             try:
-                module_dir = Path(__file__).resolve().parent
-                self.config_dir = module_dir / DEFAULT_CONFIG_DIR_NAME
-            except NameError: # __file__ not defined (e.g. in some interactive environments)
-                # Fallback to CWD/configs
-                self.config_dir = Path.cwd() / DEFAULT_CONFIG_DIR_NAME
-                logger.warning(f"__file__ not defined, defaulting config_dir to current working directory: {self.config_dir}")
+                # Assuming this file is in src/tools/sandbox_executor.py
+                # PROJECT_ROOT would be two levels up from this file's parent.
+                project_root = Path(__file__).resolve().parent.parent.parent
+                self.config_dir = project_root / "config" / DEFAULT_SANDBOX_CONFIG_SUBDIR
+            except NameError: # __file__ not defined
+                # Fallback: current_working_directory/config/sandbox
+                self.config_dir = Path.cwd() / "config" / DEFAULT_SANDBOX_CONFIG_SUBDIR
+                logger.warning(
+                    f"__file__ not defined, defaulting config_dir to: {self.config_dir}. "
+                    "Ensure this path is correct or provide base_config_path."
+                )
 
         try:
             self.config_dir.mkdir(parents=True, exist_ok=True)

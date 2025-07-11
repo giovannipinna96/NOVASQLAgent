@@ -9,9 +9,9 @@ import operator # For LangGraph state updates (conceptually)
 from typing import TYPE_CHECKING
 
 # Import conceptual manager classes for type hinting
-from .langchain_llm import LangChainLLM
-from .langchain_prompt_manager import LangChainPromptManager
-from .langchain_memory import LangChainMemory
+from ..llm.langchain_llm import LangChainLLM # Adjusted path
+from ..prompting.prompt_manager import LangChainPromptManager # Adjusted path
+from .memory import LangChainMemory # Adjusted path (now src/core/memory.py)
 
 if TYPE_CHECKING:
     from langgraph.graph import StateGraph, END
