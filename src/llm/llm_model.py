@@ -64,8 +64,8 @@ from typing import Dict, Any, Optional, List
 
 # Assuming prompt_template_manager.py and memory.py are in the same directory or accessible
 try:
-    from .prompt_template_manager import PromptTemplateManager
-    from .memory import ConversationMemory, MessageDirection
+    from ..prompting.prompt_template_manager import PromptTemplateManager
+    from ..core.base_memory import ConversationMemory, MessageDirection
 except ImportError:
     # Fallback for standalone execution or if modules are not yet fully integrated
     # This allows development of LLMmodel.py even if other parts are incomplete.

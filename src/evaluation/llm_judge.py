@@ -80,7 +80,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 # Assuming LLMmodel.py is in the same directory or accessible
 try:
-    from .LLMmodel import BaseLLM, HuggingFaceLLM, OpenAILLM
+    from ..llm.llm_model import BaseLLM, HuggingFaceLLM, OpenAILLM
     # from .prompt_template_manager import PromptTemplateManager (LLMmodel handles its own)
     # from .memory import ConversationMemory (LLMmodel handles its own)
 except ImportError:
