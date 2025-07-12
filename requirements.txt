@@ -1,0 +1,22 @@
+# Core Frameworks
+langchain
+langgraph
+langsmith
+
+# LLM Providers
+openai
+anthropic
+transformers
+accelerate
+bitsandbytes
+peft
+einops
+
+# For SQL tools
+sqlalchemy
+
+# For development and testing
+ipykernel
+pytest
+unsloth
+dbt-core
