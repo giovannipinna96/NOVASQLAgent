@@ -11,10 +11,10 @@ from typing import Dict, Any, Optional, Union
 # In a "no run" environment, these might be None if their files haven't been "processed"
 # or if there were import errors within them (though they are designed to be parseable).
 try:
-    from .filesystem_sandbox import FilesystemSandbox
+    from .code_sandbox import CodeSandbox
 except ImportError:
-    FilesystemSandbox = None # type: ignore
-    logging.warning("SandboxExecutor: FilesystemSandbox not found or importable.")
+    CodeSandbox = None # type: ignore
+    logging.warning("SandboxExecutor: CodeSandbox not found or importable.")
 try:
     from .sql_sandbox import SQLSandbox
 except ImportError:
@@ -176,37 +176,32 @@ class SandboxExecutor:
         start_time_overall = time.monotonic()
 
         if task_type == "filesystem":
-            if not FilesystemSandbox:
-                return error_result("FilesystemSandbox module is not available.")
+            if not CodeSandbox:
+                return error_result("CodeSandbox module is not available.")
 
-            working_dir = loaded_config.get("working_dir", f"./sandbox_fs_run_{int(time.time())}")
-            allow_network = loaded_config.get("allow_network", False) # Filesystem specific
-            python_exec = loaded_config.get("python_executable", sys.executable)
+            container_id = loaded_config.get("container_id")
+            image = loaded_config.get("image", "python:3.12-slim-bookworm")
 
             try:
-                fs_sandbox = FilesystemSandbox(
-                    working_dir=Path(working_dir), # Ensure it's a Path
-                    timeout_seconds=timeout,
-                    memory_limit_mb=memory_limit,
-                    allow_network=allow_network,
-                    python_executable=python_exec
+                code_sandbox = CodeSandbox(
+                    container_id=container_id,
+                    image=image,
+                    timeout=timeout,
                 )
             except Exception as e:
-                return error_result(f"Failed to initialize FilesystemSandbox: {e}")
+                return error_result(f"Failed to initialize CodeSandbox: {e}")
+
+            if not code_sandbox.container_id:
+                code_sandbox.initialize()
+
+            if not code_sandbox.container_id:
+                return error_result("Failed to initialize sandbox container.")
 
             command_to_run = task_details.get("command")
-            script_to_run = task_details.get("script_path")
-
-            if script_to_run:
-                script_args = task_details.get("args")
-                env_vars = task_details.get("env")
-                return fs_sandbox.execute_python_script(script_to_run, args=script_args, env=env_vars)
-            elif command_to_run:
-                use_shell = task_details.get("shell", False if isinstance(command_to_run, list) else True if isinstance(command_to_run, str) else False) # Default shell based on command type
-                env_vars = task_details.get("env")
-                return fs_sandbox.execute_command(command_to_run, shell=use_shell, env=env_vars)
+            if command_to_run:
+                return code_sandbox.execute(command_to_run)
             else:
-                return error_result("Filesystem task details missing 'command' or 'script_path'.")
+                return error_result("Filesystem task details missing 'command'.")
 
         elif task_type == "sql":
             if not SQLSandbox:
@@ -258,11 +253,8 @@ if __name__ == "__main__":
         # 1. Create and save a filesystem sandbox configuration
         fs_config_data = {
             "sandbox_type": "filesystem", # Informational, executor uses task_type param
-            "working_dir": str(Path(tmp_config_dir_name) / "fs_work"), # Ensure it's string for JSON
+            "image": "python:3.12-slim-bookworm",
             "timeout_seconds": 5,
-            "memory_limit_mb": 128,
-            "allow_network": False,
-            "python_executable": sys.executable
         }
         executor.save_config("default_fs", fs_config_data)
 
@@ -278,16 +270,16 @@ if __name__ == "__main__":
 
         # 3. Run a filesystem task using a loaded configuration
         logger.info("\n--- Running filesystem task with loaded config ---")
-        if FilesystemSandbox: # Check if mock or real class is available
+        if CodeSandbox: # Check if mock or real class is available
             fs_task = {
-                "command": [sys.executable, "-c", "import os; print(f'FS Sandbox says hello from {os.getcwd()}')"]
+                "command": ["echo", "Hello from the sandbox!"]
             }
             fs_result = executor.run_in_sandbox(task_type="filesystem", task_details=fs_task, config_name="default_fs")
             print(f"Filesystem task result (config): {fs_result}")
             # assert fs_result["status"] == "success" # Depends on mock behavior
-            # assert "FS Sandbox says hello" in fs_result.get("output", "")
+            # assert "Hello from the sandbox!" in fs_result.get("output", "")
         else:
-            logger.warning("Skipping filesystem task illustration as FilesystemSandbox is not available.")
+            logger.warning("Skipping filesystem task illustration as CodeSandbox is not available.")
 
         # 4. Run an SQL task using a loaded configuration
         logger.info("\n--- Running SQL task with loaded config ---")
@@ -305,12 +297,12 @@ if __name__ == "__main__":
 
         # 5. Run a filesystem task with ad-hoc (direct) configuration
         logger.info("\n--- Running filesystem task with ad-hoc config ---")
-        if FilesystemSandbox:
+        if CodeSandbox:
             adhoc_fs_config = {
-                "working_dir": str(Path(tmp_config_dir_name) / "fs_adhoc_work"),
+                "image": "alpine",
                 "timeout_seconds": 3
             }
-            fs_task_adhoc = {"command": [sys.executable, "-c", "print('Ad-hoc FS task')"]}
+            fs_task_adhoc = {"command": ["echo", "Ad-hoc FS task"]}
             adhoc_fs_result = executor.run_in_sandbox(task_type="filesystem", task_details=fs_task_adhoc, sandbox_config=adhoc_fs_config)
             print(f"Filesystem task result (ad-hoc): {adhoc_fs_result}")
             # assert adhoc_fs_result["status"] == "success"
