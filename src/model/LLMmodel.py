@@ -24,19 +24,11 @@ class BaseLangGraphAgent:
             self.llm = HuggingFacePipeline(pipeline=hf_pipeline)
         else:
             self.llm = HuggingFacePipeline.from_model_id(model_id=model_id, task="text-generation")
-        self.memory = ConversationBufferMemory(memory_key="chat_history")
         self.prompt = PromptTemplate(input_variables=["input"], template="Answer the following question: {input}")
 
-        self.agent = initialize_agent(
-            tools=[],
-            llm=self.llm,
-            agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
-            verbose=True,
-            memory=self.memory
-        )
-
     def run(self, input_text: str) -> str:
-        return self.agent.run(input_text)
+        # Usa direttamente la pipeline LLM generica
+        return self.llm(self.prompt.format(input=input_text))
 
 
 # === Reasoning Agent (inherits from base) ===
