@@ -1,0 +1,148 @@
+{
+  "description": "Example tasks for NOVA SQL Agent Multi-Agent System",
+  "version": "1.0.0",
+  "benchmark_types": ["spider2-lite", "spider2-snow", "elt-bench"],
+  "tasks": [
+    {
+      "task_id": "spider2_basic_sql",
+      "benchmark": "spider2-lite",
+      "prompt": "Find all customers who made purchases in the last 30 days and show their total spending amount",
+      "descriptions": [
+        "customers table contains: customer_id (int), name (varchar), email (varchar), registration_date (timestamp)",
+        "orders table contains: order_id (int), customer_id (int), order_date (timestamp), total_amount (decimal), status (varchar)",
+        "order_items table contains: item_id (int), order_id (int), product_id (int), quantity (int), unit_price (decimal)"
+      ],
+      "dialect": "postgresql",
+      "expected_output": "SQL query with JOIN operations and date filtering"
+    },
+    {
+      "task_id": "spider2_complex_analytics",
+      "benchmark": "spider2-lite", 
+      "prompt": "Create a comprehensive sales report showing monthly revenue trends by product category, including year-over-year growth rates and top performing products",
+      "descriptions": [
+        "sales table: sale_id, product_id, customer_id, sale_date, quantity, unit_price, total_amount, region_id",
+        "products table: product_id, product_name, category_id, price, cost, brand, supplier_id",
+        "categories table: category_id, category_name, description, parent_category_id",
+        "regions table: region_id, region_name, country, manager_id"
+      ],
+      "dialect": "bigquery",
+      "expected_output": "Complex SQL with CTEs, window functions, and aggregations"
+    },
+    {
+      "task_id": "spider2_snowflake_ml",
+      "benchmark": "spider2-snow",
+      "prompt": "Identify customers with high churn probability based on their purchase patterns and engagement metrics using ML functions",
+      "descriptions": [
+        "customer_metrics table: customer_id, total_purchases, avg_order_value, days_since_last_purchase, engagement_score",
+        "customer_segments table: customer_id, segment, lifetime_value, churn_risk_score",
+        "purchase_history table: customer_id, purchase_date, amount, frequency_score"
+      ],
+      "dialect": "snowflake",
+      "expected_output": "Snowflake ML.PREDICT or advanced analytics SQL"
+    },
+    {
+      "task_id": "elt_basic_pipeline",
+      "benchmark": "elt-bench",
+      "instruction": "Create an ELT pipeline to extract customer data from a CRM system, transform it for analytics purposes, and load it into a data warehouse",
+      "context": [
+        "Source: PostgreSQL CRM database with tables: customers, contacts, deals, activities",
+        "Transformations: Data cleaning, standardization, derived metrics calculation",
+        "Target: BigQuery analytics warehouse with star schema design",
+        "Requirements: Incremental updates, data quality checks, error handling"
+      ],
+      "expected_output": "ELT pipeline code with data extraction, transformation, and loading steps"
+    },
+    {
+      "task_id": "elt_streaming_pipeline", 
+      "benchmark": "elt-bench",
+      "instruction": "Build a real-time streaming ELT pipeline for processing IoT sensor data with anomaly detection and alerting",
+      "context": [
+        "Data source: Apache Kafka with JSON messages from IoT sensors",
+        "Schema: sensor_id, timestamp, temperature, humidity, pressure, location",
+        "Processing: Real-time aggregations, anomaly detection using statistical methods",
+        "Output: Grafana dashboard metrics, Slack alerts for anomalies, S3 historical storage",
+        "Requirements: Sub-second latency, fault tolerance, scalability"
+      ],
+      "expected_output": "Streaming pipeline with Apache Kafka, Apache Flink/Spark, and monitoring setup"
+    },
+    {
+      "task_id": "elt_data_quality",
+      "benchmark": "elt-bench", 
+      "instruction": "Implement a comprehensive data quality framework for an e-commerce data warehouse with automated validation and reporting",
+      "context": [
+        "Tables: users, orders, products, reviews, inventory, suppliers",
+        "Quality checks: Null value detection, data freshness, referential integrity, business rule validation",
+        "Monitoring: Data lineage tracking, quality score computation, automated alerts",
+        "Reporting: Executive dashboard, data steward notifications, quality trends analysis"
+      ],
+      "expected_output": "Data quality framework with validation rules, monitoring dashboards, and alerting system"
+    },
+    {
+      "task_id": "spider2_dbt_transformation",
+      "benchmark": "spider2-dbt",
+      "prompt": "Create DBT models for transforming raw e-commerce data into analytical marts for customer lifetime value analysis",
+      "descriptions": [
+        "Raw data: orders, order_items, customers, products, returns",
+        "Required transformations: Customer segmentation, CLV calculation, cohort analysis",
+        "Output: customer_analytics, product_performance, and revenue_trends marts"
+      ],
+      "dialect": "duckdb",
+      "expected_output": "DBT project with models, tests, and documentation"
+    },
+    {
+      "task_id": "multi_modal_task",
+      "benchmark": "spider2-lite",
+      "prompt": "Analyze sales data and generate both SQL queries and Python visualizations for regional performance analysis",
+      "descriptions": [
+        "sales_data table: region, month, revenue, units_sold, customer_count",
+        "regional_targets table: region, target_revenue, target_units",
+        "Requirements: SQL for data extraction, Python for visualization"
+      ],
+      "dialect": "postgresql",
+      "expected_output": "SQL queries + Python plotting code"
+    },
+    {
+      "task_id": "complex_join_scenario",
+      "benchmark": "spider2-lite",
+      "prompt": "Find the top 3 most profitable products in each category for the last quarter, including supplier information and inventory levels",
+      "descriptions": [
+        "products: product_id, name, category_id, supplier_id, cost, price",
+        "sales: sale_id, product_id, quantity, sale_date, revenue",
+        "suppliers: supplier_id, name, country, rating", 
+        "inventory: product_id, current_stock, reserved_stock, reorder_level",
+        "categories: category_id, name, description"
+      ],
+      "dialect": "postgresql",
+      "expected_output": "Complex SQL with multiple JOINs, window functions, and CTEs"
+    },
+    {
+      "task_id": "elt_migration_task",
+      "benchmark": "elt-bench",
+      "instruction": "Design and implement a data migration strategy from legacy Oracle database to modern cloud data platform",
+      "context": [
+        "Source: Oracle 11g with 200+ tables, 10TB data, complex stored procedures",
+        "Target: Snowflake cloud data warehouse with optimized schema design",
+        "Requirements: Zero downtime migration, data validation, performance optimization",
+        "Constraints: Limited migration window, regulatory compliance, data governance"
+      ],
+      "expected_output": "Migration strategy document, ETL scripts, validation procedures, rollback plan"
+    }
+  ],
+  "test_configurations": {
+    "development": {
+      "model": "microsoft/phi-4-mini-instruct",
+      "timeout": 60,
+      "max_agents": 3
+    },
+    "production": {
+      "model": "gpt-4o", 
+      "timeout": 300,
+      "max_agents": 10
+    },
+    "evaluation": {
+      "model": "claude-3-5-sonnet-20241022",
+      "timeout": 180,
+      "max_agents": 5
+    }
+  }
+}
