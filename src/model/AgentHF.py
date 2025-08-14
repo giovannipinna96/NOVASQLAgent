@@ -1,120 +1,240 @@
+"""HuggingFace Agent with enhanced tool capabilities.
+
+This module implements a sophisticated AI agent using smolagents framework with:
+- Comprehensive bash command execution tools
+- File system operations with safety checks
+- Mathematical computation tools
+- Type-safe interfaces with error handling
+- Factory pattern for model loading
+- Command pattern for tool execution
+
+Design Patterns:
+- Factory Pattern: Model and tool creation
+- Command Pattern: Tool execution abstraction
+- Strategy Pattern: Different tool execution strategies
+- Template Method: Common tool operation patterns
+"""
+
 import argparse
 import subprocess
 import os
 from pathlib import Path
+from typing import Optional, List, Any, Dict
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+import logging
+
 from smolagents import tool
 from smolagents import CodeAgent, TransformersModel
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 import torch
 
-
-# === TOOLS ===ù
-@tool
-def add_numbers(a: float, b: float) -> float:
-    """
-    Sum of two numbers. Returns the sum of two numbers.
-
-    Args:
-      a: The first number.
-      b: The second number.
-    """
-    return a + b
-
-@tool
-def multiply_numbers(a: float, b: float) -> float:
-    """
-    Multiply two numbers. Returns the product of two numbers.
-
-    Args:
-      a: The first number.
-      b: The second number.
-    """
-    return a * b
-
-@tool
-def devide_numbers(a: float, b: float) -> float:
-    """
-    Devide two numbers. Returns the division of two numbers.
-
-    Args:
-      a: The first number.
-      b: The second number.
-    """
-    return a / b
-
-@tool
-def giovannetor(a: float, b: float) -> float:
-    """
-    The 'giovannetor' function give is calculated as (a ** b) + 1.
-
-    Args:
-      a: The base number.
-      b: The exponent.
-    """
-    return a ** b + 1
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
+@dataclass
+class ToolExecutionResult:
+    """Result container for tool execution with status tracking."""
+    success: bool
+    output: str
+    error: Optional[str] = None
+    execution_time: Optional[float] = None
+
+
+class BaseToolExecutor(ABC):
+    """Abstract base class for tool executors using Template Method pattern."""
+    
+    @abstractmethod
+    def execute(self, *args, **kwargs) -> ToolExecutionResult:
+        """Execute the tool operation."""
+        pass
+    
+    def validate_input(self, *args, **kwargs) -> bool:
+        """Validate input parameters before execution."""
+        return True
+    
+    def post_process(self, result: str) -> str:
+        """Post-process the execution result."""
+        return result.strip() if result else "No output"
+
+
+class BashToolExecutor(BaseToolExecutor):
+    """Executor for bash command operations with enhanced security."""
+    
+    def __init__(self, timeout: int = 30):
+        self.timeout = timeout
+        self.forbidden_commands = [
+            'rm -rf /', 'format', 'del *', 'sudo rm',
+            'dd if=', ':(){ :|:& };:', 'chmod -R 777'
+        ]
+    
+    def validate_input(self, command: str) -> bool:
+        """Validate command for security risks."""
+        if not command or not command.strip():
+            return False
+        
+        command_lower = command.lower()
+        for forbidden in self.forbidden_commands:
+            if forbidden in command_lower:
+                logger.warning(f"Forbidden command detected: {forbidden}")
+                return False
+        
+        return True
+    
+    def execute(self, command: str) -> ToolExecutionResult:
+        """Execute bash command with security validation."""
+        if not self.validate_input(command):
+            return ToolExecutionResult(
+                success=False,
+                output="",
+                error="Invalid or forbidden command"
+            )
+        
+        try:
+            result = subprocess.run(
+                command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout
+            )
+            
+            if result.returncode == 0:
+                output = self.post_process(result.stdout)
+                return ToolExecutionResult(
+                    success=True,
+                    output=output or "Command executed successfully"
+                )
+            else:
+                error_msg = result.stderr.strip() if result.stderr else "Command failed"
+                return ToolExecutionResult(
+                    success=False,
+                    output="",
+                    error=f"Error (code {result.returncode}): {error_msg}"
+                )
+        
+        except subprocess.TimeoutExpired:
+            return ToolExecutionResult(
+                success=False,
+                output="",
+                error=f"Command timed out after {self.timeout} seconds"
+            )
+        except Exception as e:
+            return ToolExecutionResult(
+                success=False,
+                output="",
+                error=f"Execution error: {str(e)}"
+            )
+
+
+class FileSystemToolExecutor(BaseToolExecutor):
+    """Executor for file system operations with path validation."""
+    
+    def __init__(self, max_file_size: int = 10 * 1024 * 1024):  # 10MB
+        self.max_file_size = max_file_size
+    
+    def validate_path(self, path: str) -> bool:
+        """Validate file path for security."""
+        try:
+            path_obj = Path(path).resolve()
+            # Prevent directory traversal attacks
+            if '..' in str(path_obj) or path_obj.is_absolute() and not str(path_obj).startswith(str(Path.cwd())):
+                return False
+            return True
+        except Exception:
+            return False
+    
+    def list_directory(self, path: str = ".") -> ToolExecutionResult:
+        """List directory contents safely."""
+        if not self.validate_path(path):
+            return ToolExecutionResult(
+                success=False,
+                output="",
+                error="Invalid or unsafe path"
+            )
+        
+        try:
+            path_obj = Path(path)
+            if not path_obj.exists():
+                return ToolExecutionResult(
+                    success=False,
+                    output="",
+                    error=f"Path '{path}' does not exist"
+                )
+            
+            if not path_obj.is_dir():
+                return ToolExecutionResult(
+                    success=False,
+                    output="",
+                    error=f"Path '{path}' is not a directory"
+                )
+            
+            items = []
+            for item in sorted(path_obj.iterdir()):
+                item_type = "DIR" if item.is_dir() else "FILE"
+                items.append(f"{item_type}: {item.name}")
+            
+            output = "\n".join(items) if items else "Directory is empty"
+            return ToolExecutionResult(success=True, output=output)
+            
+        except Exception as e:
+            return ToolExecutionResult(
+                success=False,
+                output="",
+                error=f"Error listing directory: {str(e)}"
+            )
+
+
+# Initialize tool executors
+bash_executor = BashToolExecutor()
+fs_executor = FileSystemToolExecutor()
+
+
+# === ENHANCED TOOLS WITH DESIGN PATTERNS ===
 @tool
 def execute_bash_command(command: str) -> str:
     """
-    Execute a bash command and return its output. Use this to run shell commands, system operations, file management, etc.
+    Execute a bash command with enhanced security and error handling.
+    
+    Uses Command Pattern through BashToolExecutor for safe execution
+    with built-in security validations and timeout protection.
     
     Args:
-        command: The bash command to execute (e.g., "ls -la", "pwd", "echo 'hello'", "mkdir test_dir")
+        command: The bash command to execute (e.g., "ls -la", "pwd", "echo 'hello'")
     
     Returns:
-        str: The command output (stdout) or error message if the command fails
+        str: The command output or detailed error message
     """
-    try:
-        # Execute command with shell=True for cross-platform compatibility
-        result = subprocess.run(
-            command, 
-            shell=True, 
-            capture_output=True, 
-            text=True,
-            timeout=30  # 30 second timeout for safety
-        )
-        
-        if result.returncode == 0:
-            return result.stdout.strip() if result.stdout else "Command executed successfully (no output)"
-        else:
-            error_msg = result.stderr.strip() if result.stderr else "Command failed with no error message"
-            return f"Error (return code {result.returncode}): {error_msg}"
-            
-    except subprocess.TimeoutExpired:
-        return "Error: Command timed out after 30 seconds"
-    except Exception as e:
-        return f"Error executing command: {str(e)}"
+    result = bash_executor.execute(command)
+    
+    if result.success:
+        return result.output
+    else:
+        return result.error or "Unknown error occurred"
 
 
 @tool  
 def list_directory(path: str = ".") -> str:
     """
-    List files and directories in a specific path. Useful for exploring the file system.
+    List files and directories with enhanced security validation.
+    
+    Uses FileSystemToolExecutor with path validation to prevent
+    directory traversal attacks and ensure safe file operations.
     
     Args:
         path: The directory path to list (defaults to current directory)
     
     Returns:
-        str: List of files and directories in the specified path
+        str: List of files and directories or error message
     """
-    try:
-        path_obj = Path(path)
-        if not path_obj.exists():
-            return f"Error: Path '{path}' does not exist"
-        
-        if not path_obj.is_dir():
-            return f"Error: Path '{path}' is not a directory"
-        
-        items = []
-        for item in sorted(path_obj.iterdir()):
-            item_type = "DIR" if item.is_dir() else "FILE"
-            items.append(f"{item_type}: {item.name}")
-        
-        return "\n".join(items) if items else "Directory is empty"
-        
-    except Exception as e:
-        return f"Error listing directory: {str(e)}"
+    result = fs_executor.list_directory(path)
+    
+    if result.success:
+        return result.output
+    else:
+        return result.error or "Failed to list directory"
 
 
 @tool
@@ -249,8 +369,6 @@ Available tools:
     
     # Create agent with both math tools and bash command tools
     all_tools = [
-        # Math tools
-        add_numbers, multiply_numbers, giovannetor, devide_numbers,
         # Bash command tools
         execute_bash_command, list_directory, get_current_directory, 
         change_directory, create_file, read_file

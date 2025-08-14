@@ -1,35 +1,22 @@
 """
-LLM for SQL Generation from Natural Language Requests.
+LLM per generazione SQL da richieste in linguaggio naturale.
 
-Enterprise-grade text-to-SQL system using HuggingFace Transformers with:
-- Advanced prompt engineering and template-based generation
-- Multi-dialect SQL support with schema awareness
-- Type-safe interfaces with comprehensive error handling
-- Batch processing capabilities for scalable operations
+Sistema semplificato che usa HuggingFace Transformers per convertire 
+richieste in linguaggio naturale in query SQL.
 
-DESIGN PATTERNS:
-- Strategy Pattern: Multiple SQL generation strategies
-- Template Method: Common SQL generation workflow
-- Builder Pattern: Flexible prompt construction
-- Factory Pattern: Model and configuration creation
+FUNZIONALIT� PRINCIPALI:
+1. Generazione SQL da testo naturale
+2. Support per diversi tipi di query (SELECT, INSERT, UPDATE, DELETE)
+3. Template-based prompt engineering
+4. Generazione con phi-4-mini-instruct per consistenza architetturale
 
-PRIMARY FEATURES:
-1. Natural language to SQL conversion
-2. Support for multiple query types (SELECT, INSERT, UPDATE, DELETE, DDL)
-3. Template-based prompt engineering with few-shot learning
-4. Multi-dialect SQL generation with schema awareness
-5. Batch processing and interactive modes
+ARCHITETTURA:
+- SQLLLMGenerator: Core LLM per text-to-SQL usando pipeline Transformers
+- Prompt engineering ottimizzato per generazione SQL
+- Supporto per schemi database opzionali
 
-ARCHITECTURE:
-- SQLLLMGenerator: Core LLM for text-to-SQL using Transformers pipeline
-- SQLPromptBuilder: Optimized prompt engineering for SQL generation
-- Schema-aware generation with optional database metadata
-- Configurable inference parameters for different use cases
-
-USAGE:
-    python LLMsql.py --model "microsoft/phi-4-mini-instruct" \
-                     --query "Find all users with age greater than 25" \
-                     --dialect postgresql
+UTILIZZO:
+python LLMsql.py --model "microsoft/phi-4-mini-instruct" --query "Find all users with age > 25"
 """
 
 import argparse
@@ -41,7 +28,7 @@ from typing import List, Dict, Any, Optional, Union
 from dataclasses import dataclass
 from enum import Enum
 
-# HuggingFace Transformers imports
+# Import per HuggingFace Transformers
 from transformers import (
     AutoModelForCausalLM, 
     AutoTokenizer, 
@@ -50,13 +37,13 @@ from transformers import (
 )
 import torch
 
-# Logging configuration
+# Configurazione logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class SQLDialect(Enum):
-    """Supported SQL dialects for generation."""
+    """Dialetti SQL supportati per generazione."""
     POSTGRESQL = "postgresql"
     MYSQL = "mysql"
     SQLITE = "sqlite"
@@ -68,7 +55,7 @@ class SQLDialect(Enum):
 
 
 class QueryType(Enum):
-    """SQL query types for classification."""
+    """Tipi di query SQL."""
     SELECT = "select"
     INSERT = "insert"
     UPDATE = "update"
@@ -82,7 +69,7 @@ class QueryType(Enum):
 
 @dataclass
 class SQLGenerationConfig:
-    """Configuration for SQL generation with optimized defaults."""
+    """Configurazione per la generazione SQL."""
     model_name: str = "microsoft/phi-4-mini-instruct"
     max_new_tokens: int = 256
     temperature: float = 0.1
@@ -93,15 +80,15 @@ class SQLGenerationConfig:
 
 @dataclass
 class SchemaInfo:
-    """Database schema information container."""
-    tables: Dict[str, List[str]]  # table_name -> column_list
-    relationships: Dict[str, List[str]] = None  # table -> foreign_keys
-    indexes: Dict[str, List[str]] = None  # table -> index_list
-    constraints: Dict[str, List[str]] = None  # table -> constraints
+    """Informazioni dello schema database."""
+    tables: Dict[str, List[str]]  # nome_tabella -> lista_colonne
+    relationships: Dict[str, List[str]] = None  # tabella -> foreign_keys
+    indexes: Dict[str, List[str]] = None  # tabella -> lista_indici
+    constraints: Dict[str, List[str]] = None  # tabella -> vincoli
 
 
 class SQLPromptBuilder:
-    """Builds structured prompts for SQL generation using Template Method pattern."""
+    """Costruisce prompt strutturati per la generazione SQL."""
     
     def __init__(self, dialect: SQLDialect = SQLDialect.POSTGRESQL):
         self.dialect = dialect
@@ -283,6 +270,7 @@ CREATE TABLE"""
             return QueryType.SELECT  # Default
 
 
+
 class SQLLLMGenerator:
     """Generatore SQL usando HuggingFace Transformers."""
     
@@ -423,6 +411,7 @@ class SQLLLMGenerator:
         
         return sql_query
     
+    
     def batch_generate(
         self,
         requests: List[str],
@@ -444,36 +433,36 @@ class SQLLLMGenerator:
         return results
     
     def interactive_mode(self, schema_info: Optional[SchemaInfo] = None):
-        """Modalità interattiva per generazione SQL."""
+        """Modalit� interattiva per generazione SQL."""
         print("\n" + "="*60)
-        print("SQL LLM GENERATOR - MODALITÀ INTERATTIVA")
+        print("SQL LLM GENERATOR - MODALIT� INTERATTIVA")
         print(f"Dialetto: {self.dialect.value.upper()}")
         print("Digita 'exit' per uscire, 'schema' per vedere lo schema")
         print("="*60 + "\n")
         
         while True:
             try:
-                user_input = input("\n→ SQL Request: ").strip()
+                user_input = input("\n=9 SQL Request: ").strip()
                 
                 if user_input.lower() in ['exit', 'quit', 'bye']:
-                    print("\n✓ Arrivederci!")
+                    print("\n=K Arrivederci!")
                     break
                 
                 if user_input.lower() == 'schema':
                     if schema_info:
-                        print("\n📊 SCHEMA INFO:")
+                        print("\n=� SCHEMA INFO:")
                         for table, columns in schema_info.tables.items():
                             print(f"  Table: {table}")
                             print(f"    Columns: {', '.join(columns)}")
                     else:
-                        print("\n❌ Nessuna informazione di schema disponibile")
+                        print("\n�  Nessuna informazione di schema disponibile")
                     continue
                 
                 if not user_input:
                     continue
                 
-                print(f"\n⚡ Generazione SQL per: {user_input}")
-                print("🔄 Processing...")
+                print(f"\n= Generazione SQL per: {user_input}")
+                print("� Processing...")
                 
                 result = self.generate_sql(
                     user_request=user_input,
@@ -481,18 +470,29 @@ class SQLLLMGenerator:
                 )
                 
                 if result["success"]:
-                    print(f"\n✨ SQL GENERATO:")
+                    print(f"\n SQL GENERATO:")
                     print("="*50)
                     print(result["generated_sql"])
                     print("="*50)
+                    
+                    if result["validation"]:
+                        if result["is_valid"]:
+                            print(" Query sintatticamente valida")
+                        else:
+                            print("L Query non valida:")
+                            print(f"   Error: {result['validation']['error']}")
+                            if result['validation']['suggestions']:
+                                print("   Suggestions:")
+                                for suggestion in result['validation']['suggestions']:
+                                    print(f"   - {suggestion}")
                 else:
-                    print(f"\n❌ Errore nella generazione: {result['error']}")
+                    print(f"\nL Errore nella generazione: {result['error']}")
                 
             except KeyboardInterrupt:
-                print("\n\n✓ Sessione terminata dall'utente.")
+                print("\n\n=K Sessione terminata dall'utente.")
                 break
             except Exception as e:
-                print(f"\n❌ Errore: {str(e)}")
+                print(f"\nL Errore: {str(e)}")
 
 
 def main():
@@ -503,32 +503,33 @@ def main():
 Esempi di utilizzo:
 
 1. Generazione SQL semplice:
-   python LLMsql.py --model "microsoft/phi-4-mini-instruct" --query "Find all users with age > 25"
+   python LLMsql.py --model "microsoft/DialoGPT-medium" --query "Find all users with age > 25"
 
 2. Con dialetto specifico:
-   python LLMsql.py --model "microsoft/phi-4-mini-instruct" --query "Get total sales by category" --dialect postgresql
+   python LLMsql.py --model "microsoft/DialoGPT-medium" --query "Get total sales by category" --dialect postgresql
 
 3. Con schema personalizzato:
-   python LLMsql.py --model "microsoft/phi-4-mini-instruct" --query "Join users and orders" --schema schema.json
+   python LLMsql.py --model "microsoft/DialoGPT-medium" --query "Join users and orders" --schema schema.json
 
-4. Modalità interattiva:
-   python LLMsql.py --model "microsoft/phi-4-mini-instruct" --interactive
+4. Modalit� interattiva:
+   python LLMsql.py --model "microsoft/DialoGPT-medium" --interactive
 
 5. Batch processing:
-   python LLMsql.py --model "microsoft/phi-4-mini-instruct" --batch queries.txt
+   python LLMsql.py --model "microsoft/DialoGPT-medium" --batch queries.txt
 
 DIALETTI SUPPORTATI:
-  postgresql, mysql, sqlite, bigquery, snowflake, oracle, sqlserver, generic
+  postgresql, mysql, sqlite, bigquery, snowflake, oracle, sqlserver, redshift, clickhouse, generic
 
 TIPI DI QUERY:
   SELECT, INSERT, UPDATE, DELETE, CREATE TABLE, ALTER TABLE, Complex JOINs/Subqueries
 
-FUNZIONALITÀ:
-  ✨ Generazione SQL da linguaggio naturale
-  🎯 Template-based prompt engineering
-  📚 Few-shot learning con esempi
-  🗄️ Schema-aware generation
-  🔄 Interactive e batch modes
+FUNZIONALIT�:
+  " Generazione SQL multi-dialetto
+  " Validazione sintassi con SQLGlot
+  " Template-based prompt engineering
+  " Few-shot learning con esempi
+  " Schema-aware generation
+  " Interactive e batch modes
         """
     )
     
@@ -545,13 +546,17 @@ FUNZIONALITÀ:
     parser.add_argument("--schema", type=str,
                        help="Path al file JSON con schema database")
     parser.add_argument("--interactive", action="store_true",
-                       help="Modalità interattiva")
+                       help="Modalit� interattiva")
     parser.add_argument("--batch", type=str,
                        help="Path al file con richieste multiple (una per riga)")
+    parser.add_argument("--validate", action="store_true", default=True,
+                       help="Abilita validazione sintassi SQL")
     parser.add_argument("--temperature", type=float, default=0.1,
                        help="Temperature per generazione (default: 0.1)")
-    parser.add_argument("--max_tokens", type=int, default=256,
-                       help="Numero massimo di token da generare")
+    parser.add_argument("--max_length", type=int, default=512,
+                       help="Lunghezza massima generazione")
+    parser.add_argument("--num_candidates", type=int, default=1,
+                       help="Numero di candidati SQL da generare")
     parser.add_argument("--verbose", action="store_true",
                        help="Abilita logging verboso")
     
@@ -563,8 +568,9 @@ FUNZIONALITÀ:
     # Configurazione generazione
     config = SQLGenerationConfig(
         model_name=args.model,
-        max_new_tokens=args.max_tokens,
-        temperature=args.temperature
+        max_length=args.max_length,
+        temperature=args.temperature,
+        num_return_sequences=args.num_candidates
     )
     
     # Dialetto SQL
@@ -592,7 +598,7 @@ FUNZIONALITÀ:
     logger.info(f"Modello: {args.local_model_path or args.model}")
     logger.info(f"Dialetto: {dialect.value.upper()}")
     logger.info(f"Temperature: {args.temperature}")
-    logger.info(f"Max tokens: {args.max_tokens}")
+    logger.info(f"Max length: {args.max_length}")
     
     try:
         generator = SQLLLMGenerator(
@@ -604,11 +610,11 @@ FUNZIONALITÀ:
         logger.info("=== GENERATORE SQL INIZIALIZZATO ===")
         
         if args.interactive:
-            # Modalità interattiva
+            # Modalit� interattiva
             generator.interactive_mode(schema_info=schema_info)
             
         elif args.batch:
-            # Modalità batch
+            # Modalit� batch
             try:
                 with open(args.batch, 'r') as f:
                     requests = [line.strip() for line in f if line.strip()]
@@ -617,7 +623,8 @@ FUNZIONALITÀ:
                 
                 results = generator.batch_generate(
                     requests=requests,
-                    schema_info=schema_info
+                    schema_info=schema_info,
+                    validate=args.validate
                 )
                 
                 print(f"\n{'='*60}")
@@ -627,7 +634,11 @@ FUNZIONALITÀ:
                 for i, result in enumerate(results, 1):
                     print(f"\n{i}. REQUEST: {result['user_request']}")
                     if result["success"]:
-                        print(f"   SQL: {result['generated_sql']}")
+                        print(f"   SQL: {result['best_sql']}")
+                        if result['is_valid']:
+                            print("   STATUS:  Valid")
+                        else:
+                            print("   STATUS: L Invalid")
                     else:
                         print(f"   ERROR: {result['error']}")
                 
@@ -644,22 +655,43 @@ FUNZIONALITÀ:
             
             result = generator.generate_sql(
                 user_request=args.query,
-                schema_info=schema_info
+                schema_info=schema_info,
+                validate=args.validate,
+                num_candidates=args.num_candidates
             )
             
             if result["success"]:
-                print(f"\n✨ GENERATED SQL:")
+                print(f"\n GENERATED SQL:")
                 print("="*50)
-                print(result["generated_sql"])
+                print(result["best_sql"])
                 print("="*50)
+                
+                if result["validation"]:
+                    if result["is_valid"]:
+                        print("\n Query is syntactically valid")
+                    else:
+                        print("\nL Query validation failed:")
+                        print(f"Error: {result['validation']['error']}")
+                        if result['validation']['suggestions']:
+                            print("Suggestions:")
+                            for suggestion in result['validation']['suggestions']:
+                                print(f"  - {suggestion}")
+                
+                # Mostra candidati alternativi se pi� di uno
+                if len(result["all_candidates"]) > 1:
+                    print(f"\n= ALTERNATIVE CANDIDATES ({len(result['all_candidates'])-1}):")
+                    for candidate in result["all_candidates"][1:]:
+                        status = "" if candidate["is_valid"] else "L"
+                        print(f"  {status} {candidate['sql_query']}")
+                        
             else:
-                print(f"\n❌ Generation failed: {result['error']}")
+                print(f"\nL Generation failed: {result['error']}")
         
         else:
             # Nessuna query specificata
-            print("\n❌ Nessuna query specificata.")
+            print("\n�  Nessuna query specificata.")
             print("Usa --query 'your request' per una singola generazione")
-            print("Usa --interactive per modalità interattiva")
+            print("Usa --interactive per modalit� interattiva")
             print("Usa --batch file.txt per processing batch")
             print("Usa --help per vedere tutte le opzioni")
             

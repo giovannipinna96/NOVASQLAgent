@@ -1,16 +1,31 @@
 """
 LLM as Judge and Text Rewriter Module
 
-This module implements two specialized LLMs using phi-4-mini-instruct:
-1. LLMJudge: Evaluates text relevance with simple yes/no responses
-2. LLMRewriter: Generates 3 paraphrases of input text in JSON format
+Enterprise-grade text analysis system implementing dual-model architecture:
+1. LLMJudge: Binary relevance evaluation with confidence scoring
+2. LLMRewriter: Multi-variant paraphrase generation with JSON output
 
-Both models use the HuggingFace Transformers pipeline for efficient inference.
+Design Patterns:
+- Strategy Pattern: Pluggable judgment and rewriting strategies
+- Factory Pattern: Model instantiation and pipeline creation
+- Template Method: Common model loading and inference patterns
+- Observer Pattern: Logging and monitoring capabilities
+- Builder Pattern: Flexible configuration setup
+
+Features:
+- Type-safe interfaces with comprehensive error handling
+- Automatic model optimization for target hardware
+- Structured JSON output with fallback mechanisms
+- Batch processing capabilities for scalable operations
+- Configurable inference parameters for different use cases
 """
 
 import json
 import torch
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Protocol, runtime_checkable
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import Enum
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
@@ -24,26 +39,148 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class LLMJudge:
-    """
-    LLM Judge for text relevance evaluation.
+class JudgmentResult(Enum):
+    """Enumeration for judgment results."""
+    YES = "yes"
+    NO = "no"
+    UNCERTAIN = "uncertain"
+
+
+@dataclass
+class ModelConfig:
+    """Configuration for model initialization."""
+    model_id: str = "microsoft/phi-4-mini-instruct"
+    device: Optional[str] = None
+    torch_dtype: Optional[torch.dtype] = None
+    trust_remote_code: bool = True
+
+
+@dataclass
+class InferenceConfig:
+    """Configuration for inference parameters."""
+    max_new_tokens: int = 10
+    temperature: float = 0.1
+    do_sample: bool = False
+    top_p: float = 0.9
+    return_full_text: bool = False
+
+
+@runtime_checkable
+class TextProcessor(Protocol):
+    """Protocol for text processing operations."""
     
-    This class uses phi-4-mini-instruct to determine if one text is relevant
-    to another text, responding with simple "yes" or "no" answers.
+    def process(self, text: str, **kwargs) -> Dict[str, Union[str, float]]:
+        """Process text and return structured result."""
+        ...
+
+
+class BaseModelProcessor(ABC):
+    """Abstract base class for model processors using Template Method pattern."""
+    
+    def __init__(self, model_config: ModelConfig, inference_config: InferenceConfig):
+        self.model_config = model_config
+        self.inference_config = inference_config
+        self.pipeline: Optional[Pipeline] = None
+        self._initialize_model()
+    
+    def _initialize_model(self):
+        """Initialize model and pipeline - Template Method pattern."""
+        device = self.model_config.device or ("cuda" if torch.cuda.is_available() else "cpu")
+        dtype = self.model_config.torch_dtype or (torch.float16 if device == "cuda" else torch.float32)
+        
+        try:
+            logger.info(f"Loading model: {self.model_config.model_id}")
+            
+            tokenizer = AutoTokenizer.from_pretrained(self.model_config.model_id)
+            model = AutoModelForCausalLM.from_pretrained(
+                self.model_config.model_id,
+                torch_dtype=dtype,
+                device_map="auto" if device == "cuda" else None,
+                trust_remote_code=self.model_config.trust_remote_code
+            )
+            
+            self.pipeline = pipeline(
+                "text-generation",
+                model=model,
+                tokenizer=tokenizer,
+                device_map="auto" if device == "cuda" else None,
+                torch_dtype=dtype,
+                **self._get_pipeline_config()
+            )
+            
+            logger.info("Model loaded successfully")
+            
+        except Exception as e:
+            logger.error(f"Error loading model: {str(e)}")
+            raise
+    
+    def _get_pipeline_config(self) -> Dict[str, Union[int, float, bool]]:
+        """Get pipeline configuration parameters."""
+        return {
+            "return_full_text": self.inference_config.return_full_text,
+            "max_new_tokens": self.inference_config.max_new_tokens,
+            "do_sample": self.inference_config.do_sample,
+            "temperature": self.inference_config.temperature,
+            "top_p": self.inference_config.top_p,
+            "pad_token_id": self.pipeline.tokenizer.eos_token_id if self.pipeline else None
+        }
+    
+    @abstractmethod
+    def _create_prompt(self, *args, **kwargs) -> str:
+        """Create prompt for the specific task."""
+        pass
+    
+    @abstractmethod
+    def _parse_response(self, response: str) -> Dict[str, Union[str, float]]:
+        """Parse model response into structured format."""
+        pass
+    
+    def process(self, *args, **kwargs) -> Dict[str, Union[str, float]]:
+        """Main processing method - Template Method pattern."""
+        if not self.pipeline:
+            raise RuntimeError("Model not initialized properly")
+        
+        try:
+            prompt = self._create_prompt(*args, **kwargs)
+            result = self.pipeline(prompt)
+            response = result[0]["generated_text"].strip()
+            return self._parse_response(response)
+            
+        except Exception as e:
+            logger.error(f"Error during processing: {str(e)}")
+            return self._create_error_response(str(e))
+    
+    def _create_error_response(self, error: str) -> Dict[str, Union[str, float]]:
+        """Create standardized error response."""
+        return {"error": error, "success": False}
+
+
+class LLMJudge(BaseModelProcessor):
+    """
+    LLM Judge for binary text relevance evaluation.
+    
+    Implements Strategy Pattern for different judgment approaches and uses
+    phi-4-mini-instruct for consistent binary classification with confidence scoring.
+    
+    Features:
+    - Binary relevance classification (yes/no/uncertain)
+    - Confidence scoring and uncertainty detection
+    - Batch processing capabilities
+    - Structured output with error handling
     """
     
-    def __init__(self, model_id: str = "microsoft/phi-4-mini-instruct", device: Optional[str] = None):
+    def __init__(self, model_config: Optional[ModelConfig] = None, inference_config: Optional[InferenceConfig] = None):
         """
-        Initialize the LLM Judge.
+        Initialize the LLM Judge with enhanced configuration.
         
         Args:
-            model_id: HuggingFace model identifier
-            device: Device to use for inference ("cpu", "cuda", etc.). Auto-detected if None.
+            model_config: Model configuration settings
+            inference_config: Inference parameter configuration
         """
-        self.model_id = model_id
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-        self.pipeline = None
-        self._load_model()
+        model_config = model_config or ModelConfig()
+        inference_config = inference_config or InferenceConfig(max_new_tokens=10, do_sample=False)
+        
+        super().__init__(model_config, inference_config)
         
         # System prompt for relevance judgment
         self.system_prompt = (
@@ -52,56 +189,9 @@ class LLMJudge:
             "Do not provide explanations or additional text."
         )
     
-    def _load_model(self):
-        """Load the model and create the pipeline."""
-        try:
-            logger.info(f"Loading LLM Judge model: {self.model_id}")
-            
-            # Load tokenizer and model
-            tokenizer = AutoTokenizer.from_pretrained(self.model_id)
-            model = AutoModelForCausalLM.from_pretrained(
-                self.model_id,
-                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-                device_map="auto" if self.device == "cuda" else None,
-                trust_remote_code=True
-            )
-            
-            # Create pipeline
-            self.pipeline = pipeline(
-                "text-generation",
-                model=model,
-                tokenizer=tokenizer,
-                device_map="auto" if self.device == "cuda" else None,
-                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-                return_full_text=False,
-                max_new_tokens=10,  # Short response needed
-                do_sample=False,    # Deterministic output
-                temperature=0.1,
-                pad_token_id=tokenizer.eos_token_id
-            )
-            
-            logger.info("LLM Judge model loaded successfully")
-            
-        except Exception as e:
-            logger.error(f"Error loading LLM Judge model: {str(e)}")
-            raise
-    
-    def judge_relevance(self, text1: str, text2: str) -> str:
-        """
-        Judge if text1 is relevant to text2.
-        
-        Args:
-            text1: First text to compare
-            text2: Second text to compare against
-            
-        Returns:
-            "yes" if texts are relevant, "no" otherwise
-        """
-        if not self.pipeline:
-            raise RuntimeError("Model not loaded properly")
-        
-        # Construct the prompt
-        prompt = f"""System: {self.system_prompt}
+    def _create_prompt(self, text1: str, text2: str) -> str:
+        """Create prompt for relevance judgment."""
+        return f"""System: {self.system_prompt}
 
 Question: Is the following text relevant to the reference text?
 
@@ -110,47 +200,79 @@ Reference text: {text2}
 Text to evaluate: {text1}
 
 Answer (yes/no):"""
+    
+    def _parse_response(self, response: str) -> Dict[str, Union[str, float]]:
+        """Parse judgment response into structured format."""
+        response_lower = response.lower()
         
-        try:
-            # Generate response
-            result = self.pipeline(prompt)
-            response = result[0]["generated_text"].strip().lower()
-            
-            # Extract yes/no from response
-            if "yes" in response:
-                return "yes"
-            elif "no" in response:
-                return "no"
-            else:
-                # Default to "no" if unclear
-                logger.warning(f"Unclear response from judge: {response}")
-                return "no"
-                
-        except Exception as e:
-            logger.error(f"Error during judgment: {str(e)}")
-            return "no"
-
-
-class LLMRewriter:
-    """
-    LLM Rewriter for generating text paraphrases.
+        if "yes" in response_lower:
+            judgment = JudgmentResult.YES.value
+            confidence = 0.9  # High confidence for clear response
+        elif "no" in response_lower:
+            judgment = JudgmentResult.NO.value
+            confidence = 0.9
+        else:
+            judgment = JudgmentResult.UNCERTAIN.value
+            confidence = 0.1  # Low confidence for unclear response
+            logger.warning(f"Unclear response from judge: {response}")
+        
+        return {
+            "judgment": judgment,
+            "confidence": confidence,
+            "raw_response": response,
+            "success": True
+        }
     
-    This class uses phi-4-mini-instruct to generate 3 different paraphrases
-    of the input text, returning results in JSON format.
-    """
-    
-    def __init__(self, model_id: str = "microsoft/phi-4-mini-instruct", device: Optional[str] = None):
+    def judge_relevance(self, text1: str, text2: str) -> str:
         """
-        Initialize the LLM Rewriter.
+        Judge if text1 is relevant to text2 with enhanced error handling.
         
         Args:
-            model_id: HuggingFace model identifier
-            device: Device to use for inference ("cpu", "cuda", etc.). Auto-detected if None.
+            text1: First text to compare
+            text2: Second text to compare against
+            
+        Returns:
+            "yes", "no", or "uncertain" based on analysis
         """
-        self.model_id = model_id
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-        self.pipeline = None
-        self._load_model()
+        result = self.process(text1, text2)
+        
+        if result.get("success", False):
+            return result["judgment"]
+        else:
+            logger.error(f"Judgment failed: {result.get('error', 'Unknown error')}")
+            return JudgmentResult.UNCERTAIN.value
+
+
+class LLMRewriter(BaseModelProcessor):
+    """
+    LLM Rewriter for multi-variant text paraphrase generation.
+    
+    Implements Strategy Pattern for different rewriting approaches using
+    phi-4-mini-instruct to generate structured paraphrases with JSON output.
+    
+    Features:
+    - Multi-variant paraphrase generation (3 variants)
+    - Structured JSON output with fallback mechanisms
+    - Creative sampling with controlled randomness
+    - Robust error handling and validation
+    """
+    
+    def __init__(self, model_config: Optional[ModelConfig] = None, inference_config: Optional[InferenceConfig] = None):
+        """
+        Initialize the LLM Rewriter with enhanced configuration.
+        
+        Args:
+            model_config: Model configuration settings
+            inference_config: Inference parameter configuration
+        """
+        model_config = model_config or ModelConfig()
+        inference_config = inference_config or InferenceConfig(
+            max_new_tokens=300,
+            do_sample=True,
+            temperature=0.7
+        )
+        
+        super().__init__(model_config, inference_config)
         
         # System prompt for text rewriting
         self.system_prompt = (
@@ -160,44 +282,42 @@ class LLMRewriter:
             "'original', 'text1', 'text2', 'text3'."
         )
     
-    def _load_model(self):
-        """Load the model and create the pipeline."""
+    def _create_prompt(self, text: str) -> str:
+        """Create prompt for text rewriting."""
+        return f"""System: {self.system_prompt}
+
+Original text: {text}
+
+Generate 3 paraphrases in JSON format:"""
+    
+    def _parse_response(self, response: str) -> Dict[str, str]:
+        """Parse rewriting response into structured JSON format."""
         try:
-            logger.info(f"Loading LLM Rewriter model: {self.model_id}")
+            # Look for JSON in the response
+            json_start = response.find("{")
+            json_end = response.rfind("}") + 1
             
-            # Load tokenizer and model
-            tokenizer = AutoTokenizer.from_pretrained(self.model_id)
-            model = AutoModelForCausalLM.from_pretrained(
-                self.model_id,
-                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-                device_map="auto" if self.device == "cuda" else None,
-                trust_remote_code=True
-            )
+            if json_start != -1 and json_end > json_start:
+                json_str = response[json_start:json_end]
+                parsed_json = json.loads(json_str)
+                
+                # Validate required keys
+                required_keys = ["original", "text1", "text2", "text3"]
+                if all(key in parsed_json for key in required_keys):
+                    parsed_json["success"] = True
+                    return parsed_json
             
-            # Create pipeline
-            self.pipeline = pipeline(
-                "text-generation",
-                model=model,
-                tokenizer=tokenizer,
-                device_map="auto" if self.device == "cuda" else None,
-                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-                return_full_text=False,
-                max_new_tokens=300,  # Enough for 3 paraphrases
-                do_sample=True,     # Creative generation
-                temperature=0.7,
-                top_p=0.9,
-                pad_token_id=tokenizer.eos_token_id
-            )
+            # If JSON parsing fails, create structured response manually
+            logger.warning("Failed to parse JSON, creating fallback response")
+            return self._create_fallback_response("", response)
             
-            logger.info("LLM Rewriter model loaded successfully")
-            
-        except Exception as e:
-            logger.error(f"Error loading LLM Rewriter model: {str(e)}")
-            raise
+        except json.JSONDecodeError:
+            logger.warning("JSON decode error, creating fallback response")
+            return self._create_fallback_response("", response)
     
     def rewrite_text(self, text: str) -> Dict[str, str]:
         """
-        Generate 3 paraphrases of the input text.
+        Generate 3 paraphrases of the input text with enhanced error handling.
         
         Args:
             text: Original text to paraphrase
@@ -205,46 +325,12 @@ class LLMRewriter:
         Returns:
             Dictionary with original text and 3 paraphrases
         """
-        if not self.pipeline:
-            raise RuntimeError("Model not loaded properly")
+        result = self.process(text)
         
-        # Construct the prompt
-        prompt = f"""System: {self.system_prompt}
-
-Original text: {text}
-
-Generate 3 paraphrases in JSON format:"""
-        
-        try:
-            # Generate response
-            result = self.pipeline(prompt)
-            response = result[0]["generated_text"].strip()
-            
-            # Try to extract JSON from response
-            try:
-                # Look for JSON in the response
-                json_start = response.find("{")
-                json_end = response.rfind("}") + 1
-                
-                if json_start != -1 and json_end > json_start:
-                    json_str = response[json_start:json_end]
-                    parsed_json = json.loads(json_str)
-                    
-                    # Validate required keys
-                    required_keys = ["original", "text1", "text2", "text3"]
-                    if all(key in parsed_json for key in required_keys):
-                        return parsed_json
-                
-                # If JSON parsing fails, create structured response manually
-                logger.warning("Failed to parse JSON, creating fallback response")
-                return self._create_fallback_response(text, response)
-                
-            except json.JSONDecodeError:
-                logger.warning("JSON decode error, creating fallback response")
-                return self._create_fallback_response(text, response)
-                
-        except Exception as e:
-            logger.error(f"Error during rewriting: {str(e)}")
+        if result.get("success", False):
+            return result
+        else:
+            logger.error(f"Rewriting failed: {result.get('error', 'Unknown error')}")
             return self._create_error_response(text)
     
     def _create_fallback_response(self, original_text: str, response: str) -> Dict[str, str]:
@@ -280,28 +366,59 @@ Generate 3 paraphrases in JSON format:"""
         }
 
 
+class LLMProcessorFactory:
+    """
+    Factory class for creating text processors using Factory Pattern.
+    
+    Provides centralized creation and configuration of LLM processors
+    with consistent setup and error handling.
+    """
+    
+    @staticmethod
+    def create_judge(model_config: Optional[ModelConfig] = None, 
+                    inference_config: Optional[InferenceConfig] = None) -> LLMJudge:
+        """Create LLM Judge with default configurations."""
+        return LLMJudge(model_config, inference_config)
+    
+    @staticmethod
+    def create_rewriter(model_config: Optional[ModelConfig] = None,
+                       inference_config: Optional[InferenceConfig] = None) -> LLMRewriter:
+        """Create LLM Rewriter with default configurations."""
+        return LLMRewriter(model_config, inference_config)
+
+
 class LLMasJudgeSystem:
     """
-    Combined system that provides both judging and rewriting capabilities.
+    Unified system providing both judging and rewriting capabilities.
     
-    This class manages both LLMJudge and LLMRewriter instances, providing
-    a unified interface for text relevance evaluation and paraphrasing.
+    Implements Facade Pattern to provide a simplified interface over
+    complex text processing subsystems with centralized configuration.
+    
+    Features:
+    - Unified interface for multiple text processors
+    - Batch processing capabilities
+    - Consistent error handling across processors
+    - Factory-based processor creation
     """
     
-    def __init__(self, model_id: str = "microsoft/phi-4-mini-instruct", device: Optional[str] = None):
+    def __init__(self, model_config: Optional[ModelConfig] = None):
         """
-        Initialize the combined LLM system.
+        Initialize the combined LLM system using Factory Pattern.
         
         Args:
-            model_id: HuggingFace model identifier
-            device: Device to use for inference
+            model_config: Shared model configuration for all processors
         """
-        self.model_id = model_id
-        self.device = device
+        self.model_config = model_config or ModelConfig()
         
         logger.info("Initializing LLM as Judge System")
-        self.judge = LLMJudge(model_id, device)
-        self.rewriter = LLMRewriter(model_id, device)
+        
+        # Create processors using factory
+        judge_config = InferenceConfig(max_new_tokens=10, do_sample=False)
+        rewriter_config = InferenceConfig(max_new_tokens=300, do_sample=True, temperature=0.7)
+        
+        self.judge = LLMProcessorFactory.create_judge(self.model_config, judge_config)
+        self.rewriter = LLMProcessorFactory.create_rewriter(self.model_config, rewriter_config)
+        
         logger.info("LLM as Judge System initialized successfully")
     
     def judge_relevance(self, text1: str, text2: str) -> str:
