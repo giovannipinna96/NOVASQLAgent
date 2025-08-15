@@ -44,6 +44,7 @@ class SummarizationModel(Enum):
     T5_SMALL = "google-t5/t5-small"
     LED_BASE = "allenai/led-base-16384"  # For long documents
     BIGBIRD_PEGASUS = "google/bigbird-pegasus-large-arxiv"
+    PHI_4_MINI = "microsoft/Phi-4-mini-instruct"  # Causal LM
 
 
 @dataclass
@@ -163,6 +164,10 @@ class LLMSummarizer:
                 return "cpu"
         return self.config.device
     
+    def _is_causal_lm(self, model_name: str) -> bool:
+        """Check if the model is a causal language model."""
+        return any(model in model_name.lower() for model in ["phi", "llama", "gpt", "mistral", "qwen"])
+    
     def _initialize_model(self):
         """Initialize the summarization model."""
         try:
@@ -172,6 +177,8 @@ class LLMSummarizer:
                 # Setup pipeline based on model type
                 if "t5" in self.config.model_name.lower():
                     task = "text2text-generation"
+                elif self._is_causal_lm(self.config.model_name):
+                    task = "text-generation"
                 else:
                     task = "summarization"
                 
@@ -186,6 +193,10 @@ class LLMSummarizer:
                 # Load model and tokenizer separately for more control
                 self.logger.info(f"Loading model and tokenizer separately: {self.config.model_name}")
                 self.tokenizer = AutoTokenizer.from_pretrained(self.config.model_name)
+                
+                # Set padding token for causal LMs if not present
+                if self._is_causal_lm(self.config.model_name) and self.tokenizer.pad_token is None:
+                    self.tokenizer.pad_token = self.tokenizer.eos_token
                 
                 # Load appropriate model class based on model name
                 if "t5" in self.config.model_name.lower():
@@ -202,6 +213,12 @@ class LLMSummarizer:
                     )
                 elif "pegasus" in self.config.model_name.lower():
                     self.model = PegasusForConditionalGeneration.from_pretrained(
+                        self.config.model_name,
+                        torch_dtype=self.config.torch_dtype,
+                        device_map=self.device
+                    )
+                elif self._is_causal_lm(self.config.model_name):
+                    self.model = AutoModelForCausalLM.from_pretrained(
                         self.config.model_name,
                         torch_dtype=self.config.torch_dtype,
                         device_map=self.device
@@ -296,6 +313,21 @@ class LLMSummarizer:
                         repetition_penalty=config.repetition_penalty
                     )
                     summary = result[0]['generated_text'] if result else ""
+                elif self._is_causal_lm(config.model_name):
+                    # Causal LMs use text-generation
+                    result = self.pipeline(
+                        input_text,
+                        max_new_tokens=config.max_length,
+                        do_sample=config.do_sample,
+                        temperature=config.temperature,
+                        top_k=config.top_k,
+                        top_p=config.top_p,
+                        repetition_penalty=config.repetition_penalty,
+                        pad_token_id=self.pipeline.tokenizer.eos_token_id
+                    )
+                    full_text = result[0]['generated_text'] if result else ""
+                    # Extract only the generated part (remove the input prompt)
+                    summary = full_text[len(input_text):].strip() if full_text.startswith(input_text) else full_text
                 else:
                     # Other models use summarization pipeline
                     result = self.pipeline(
@@ -336,21 +368,30 @@ class LLMSummarizer:
         if config.strategy == SummarizationStrategy.KEY_FACTS:
             if "t5" in config.model_name.lower():
                 return f"extract key facts: {text}"
+            elif self._is_causal_lm(config.model_name):
+                return f"Extract the main facts and key information from this text:\n\n{text}\n\nKey facts:"
             else:
                 return f"Extract the main facts and key information from this text: {text}"
         
         elif config.strategy == SummarizationStrategy.BULLET_POINTS:
             if "t5" in config.model_name.lower():
                 return f"create bullet points: {text}"
+            elif self._is_causal_lm(config.model_name):
+                return f"Create a bullet-point summary of this text:\n\n{text}\n\nBullet points:"
             else:
                 return f"Create a bullet-point summary of this text: {text}"
         
         elif config.strategy == SummarizationStrategy.EXTRACTIVE:
-            return f"Extract the most important sentences: {text}"
+            if self._is_causal_lm(config.model_name):
+                return f"Extract the most important sentences from this text:\n\n{text}\n\nMost important sentences:"
+            else:
+                return f"Extract the most important sentences: {text}"
         
         else:  # ABSTRACTIVE or HYBRID
             if "t5" in config.model_name.lower():
                 return f"summarize: {text}"
+            elif self._is_causal_lm(config.model_name):
+                return f"Please provide a concise summary of the following text:\n\n{text}\n\nSummary:"
             else:
                 return text
     
@@ -368,26 +409,46 @@ class LLMSummarizer:
         
         # Generate summary
         with torch.no_grad():
-            outputs = self.model.generate(
-                inputs.input_ids,
-                attention_mask=inputs.attention_mask,
-                max_length=config.max_length,
-                min_length=config.min_length,
-                num_beams=config.num_beams,
-                length_penalty=config.length_penalty,
-                early_stopping=config.early_stopping,
-                do_sample=config.do_sample,
-                temperature=config.temperature,
-                top_k=config.top_k,
-                top_p=config.top_p,
-                repetition_penalty=config.repetition_penalty
-            )
+            if self._is_causal_lm(config.model_name):
+                # For causal LMs, use max_new_tokens instead of max_length
+                outputs = self.model.generate(
+                    inputs.input_ids,
+                    attention_mask=inputs.attention_mask,
+                    max_new_tokens=config.max_length,
+                    do_sample=config.do_sample,
+                    temperature=config.temperature,
+                    top_k=config.top_k,
+                    top_p=config.top_p,
+                    repetition_penalty=config.repetition_penalty,
+                    pad_token_id=self.tokenizer.eos_token_id
+                )
+            else:
+                # For seq2seq models
+                outputs = self.model.generate(
+                    inputs.input_ids,
+                    attention_mask=inputs.attention_mask,
+                    max_length=config.max_length,
+                    min_length=config.min_length,
+                    num_beams=config.num_beams,
+                    length_penalty=config.length_penalty,
+                    early_stopping=config.early_stopping,
+                    do_sample=config.do_sample,
+                    temperature=config.temperature,
+                    top_k=config.top_k,
+                    top_p=config.top_p,
+                    repetition_penalty=config.repetition_penalty
+                )
         
         # Decode output
         summary = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         
-        # Remove input prefix for T5-like models
-        if "t5" in config.model_name.lower() and summary.startswith(input_text.split(':')[0]):
+        # Handle different model types
+        if self._is_causal_lm(config.model_name):
+            # For causal LMs, remove the input prompt from the generated text
+            if summary.startswith(input_text):
+                summary = summary[len(input_text):].strip()
+        elif "t5" in config.model_name.lower() and summary.startswith(input_text.split(':')[0]):
+            # Remove input prefix for T5-like models
             summary = summary.replace(input_text.split(':')[0] + ':', '').strip()
         
         return summary

@@ -92,15 +92,43 @@ class BaseModelProcessor(ABC):
             logger.info(f"Loading model: {self.model_config.model_id}")
             
             tokenizer = AutoTokenizer.from_pretrained(self.model_config.model_id)
-            model = AutoModelForCausalLM.from_pretrained(
-                self.model_config.model_id,
-                torch_dtype=dtype,
-                device_map="auto" if device == "cuda" else None,
-                trust_remote_code=self.model_config.trust_remote_code
-            )
+            
+            # Detect model type and load appropriately
+            if "t5" in self.model_config.model_id.lower():
+                from transformers import T5ForConditionalGeneration
+                model = T5ForConditionalGeneration.from_pretrained(
+                    self.model_config.model_id,
+                    torch_dtype=dtype,
+                    device_map="auto" if device == "cuda" else None,
+                    trust_remote_code=self.model_config.trust_remote_code
+                )
+            elif "bart" in self.model_config.model_id.lower():
+                from transformers import BartForConditionalGeneration
+                model = BartForConditionalGeneration.from_pretrained(
+                    self.model_config.model_id,
+                    torch_dtype=dtype,
+                    device_map="auto" if device == "cuda" else None,
+                    trust_remote_code=self.model_config.trust_remote_code
+                )
+            else:
+                # Default to causal LM for most other models
+                model = AutoModelForCausalLM.from_pretrained(
+                    self.model_config.model_id,
+                    torch_dtype=dtype,
+                    device_map="auto" if device == "cuda" else None,
+                    trust_remote_code=self.model_config.trust_remote_code
+                )
+            
+            # Select appropriate task type based on model
+            if "t5" in self.model_config.model_id.lower():
+                task = "text2text-generation"
+            elif "bart" in self.model_config.model_id.lower():
+                task = "text2text-generation"
+            else:
+                task = "text-generation"
             
             self.pipeline = pipeline(
-                "text-generation",
+                task,
                 model=model,
                 tokenizer=tokenizer,
                 device_map="auto" if device == "cuda" else None,
@@ -116,14 +144,18 @@ class BaseModelProcessor(ABC):
     
     def _get_pipeline_config(self) -> Dict[str, Union[int, float, bool]]:
         """Get pipeline configuration parameters."""
-        return {
-            "return_full_text": self.inference_config.return_full_text,
+        config = {
             "max_new_tokens": self.inference_config.max_new_tokens,
             "do_sample": self.inference_config.do_sample,
             "temperature": self.inference_config.temperature,
             "top_p": self.inference_config.top_p,
-            "pad_token_id": self.pipeline.tokenizer.eos_token_id if self.pipeline else None
         }
+        
+        # Only add return_full_text for causal models, not for T5/BART
+        if not ("t5" in self.model_config.model_id.lower() or "bart" in self.model_config.model_id.lower()):
+            config["return_full_text"] = self.inference_config.return_full_text
+            
+        return config
     
     @abstractmethod
     def _create_prompt(self, *args, **kwargs) -> str:
@@ -481,7 +513,8 @@ if __name__ == "__main__":
         # Demo mode with example texts
         print("Running demo mode...")
         
-        system = LLMasJudgeSystem(args.model, args.device)
+        model_config = ModelConfig(model_id=args.model, device=args.device)
+        system = LLMasJudgeSystem(model_config)
         
         # Demo judging
         print("\n=== LLM Judge Demo ===")
@@ -503,7 +536,8 @@ if __name__ == "__main__":
         
     else:
         # User-specified mode
-        system = LLMasJudgeSystem(args.model, args.device)
+        model_config = ModelConfig(model_id=args.model, device=args.device)
+        system = LLMasJudgeSystem(model_config)
         
         if args.mode in ["judge", "both"] and args.text2:
             print("\n=== Judging Relevance ===")

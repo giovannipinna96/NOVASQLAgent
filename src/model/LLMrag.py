@@ -630,7 +630,8 @@ Query utente: {user_query}
 Fornisci una risposta completa e accurata basata sui documenti recuperati.
 \"\"\"
                 
-                print(f"\\n= Elaborazione query: {user_query}")
+                print(f"\\n=
+ Elaborazione query: {user_query}")
                 print("� Ricerca documenti e generazione risposta...")
                 
                 # Esegui pipeline RAG
@@ -649,7 +650,8 @@ Fornisci una risposta completa e accurata basata sui documenti recuperati.
                 
     elif args.query:
         # Singola query
-        print(f"\\n= PROCESSING QUERY: {args.query}")
+        print(f"\\n=
+ PROCESSING QUERY: {args.query}")
         print("="*60)
         
         # Costruisci prompt RAG

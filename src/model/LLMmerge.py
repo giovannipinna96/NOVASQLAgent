@@ -506,15 +506,15 @@ if __name__ == "__main__":
         result = system.merge_queries(args.input, detailed=True)
         
         if result["success"]:
-            print(f"\n=Ê ANALYSIS:")
+            print(f"\n== ANALYSIS:")
             print(f"Extracted queries: {len(result['extracted_queries'])}")
             print(f"Merge strategy: {result['merge_strategy']}")
             
-            print(f"\n= EXTRACTED QUERIES:")
+            print(f"\n== EXTRACTED QUERIES:")
             for i, query in enumerate(result['extracted_queries'], 1):
                 print(f"{i}. {query}")
             
-            print(f"\n= MERGED QUERY:")
+            print(f"\n== MERGED QUERY:")
             print("=" * 50)
             print(result['merged_query'])
             print("=" * 50)
