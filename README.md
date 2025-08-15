@@ -468,4 +468,15 @@ python src/data/raw_data_manager.py
 python final2.py --limit 5
 ```
 
-Per documentazione dettagliata sui singoli componenti, consultare `CLAUDE.md`.
+## 📚 Documentazione Completa
+
+- **`CLAUDE.md`** - Guida per sviluppatori e istruzioni Claude Code
+- **`DETAILED_DOCUMENTATION.md`** - 📖 **Documentazione tecnica dettagliata** con analisi completa di:
+  - Architettura interna di ogni componente
+  - Esempi d'uso avanzati e configurazioni
+  - Workflow completi per ogni file principale
+  - Troubleshooting e best practices
+  - Integrazione tra componenti
+- **`README.md`** - Panoramica generale del progetto
+
+Per una comprensione approfondita del sistema, si raccomanda di consultare `DETAILED_DOCUMENTATION.md`.
