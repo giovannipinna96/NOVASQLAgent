@@ -1,0 +1,9 @@
+{
+  "pipeline_name": "E-commerce Analytics Pipeline",
+  "model": "microsoft/phi-4-mini-instruct",
+  "dialect": "bigquery",
+  "variants": 4,
+  "confidence": 0.75,
+  "include_comments": true,
+  "max_length": 2500
+}

@@ -73,9 +73,9 @@ def basic_example():
         # Step 3: Generate SQL
         print("Step 3: Generating SQL...")
         sql_config = SQLGenerationConfig(
-            dialect=SQLDialect.POSTGRESQL,
-            include_comments=True,
-            max_length=2000
+            model_name="microsoft/phi-4-mini-instruct",
+            max_new_tokens=512,
+            temperature=0.1
         )
         
         sql_generator = SQLLLMGenerator(config=sql_config, dialect=SQLDialect.POSTGRESQL)
@@ -210,9 +210,9 @@ def advanced_example():
         # Step 4: Generate multiple SQL queries
         print("Step 4: Generating SQL queries...")
         sql_config = SQLGenerationConfig(
-            dialect=SQLDialect.POSTGRESQL,
-            include_comments=True,
-            max_length=3000
+            model_name="microsoft/phi-4-mini-instruct",
+            max_new_tokens=512,
+            temperature=0.1
         )
         
         sql_generator = SQLLLMGenerator(config=sql_config, dialect=SQLDialect.POSTGRESQL)
@@ -245,8 +245,8 @@ def advanced_example():
         from SQLTranlator.sql_translator import SQLDialect as TranslatorDialect
         translation_result = translator.translate(
             sql_query=merged_query,
-            target_dialect=TranslatorDialect.POSTGRESQL,
-            source_dialect=TranslatorDialect.GENERIC
+            target_dialect=TranslatorDialect.POSTGRES,
+            source_dialect="generic"
         )
         
         if translation_result.success and translation_result.translated_query:
@@ -275,7 +275,7 @@ def advanced_example():
 -- Variants generated: {len(variants)}
 -- Relevant descriptions: {len(relevant_descriptions)}/{len(descriptions)}
 -- Merge strategy: {merge_strategy if 'merge_strategy' in locals() else 'none'}
--- Translation performed: {'Yes' if translation_result.success if 'translation_result' in locals() else False else 'No'}
+-- Translation performed: {'Yes' if 'translation_result' in locals() and translation_result.success else 'No'}
 -- ===================================================
 
 """
@@ -301,8 +301,8 @@ def advanced_example():
                 "descriptions_evaluated": len(descriptions),
                 "relevant_descriptions": len(relevant_descriptions),
                 "queries_generated": len(queries),
-                "merge_performed": merge_result.get("success", False) if 'merge_result' in locals() else False,
-                "translation_performed": translation_result.success if 'translation_result' in locals() else False
+                "merge_performed": 'merge_result' in locals() and merge_result.get("success", False),
+                "translation_performed": 'translation_result' in locals() and translation_result.success
             },
             "output_files": {
                 "sql_file": str(output_file),
@@ -323,8 +323,8 @@ def advanced_example():
         print(f"📊 Processing stats:")
         print(f"  - Variants generated: {len(variants)}")
         print(f"  - Relevant descriptions: {len(relevant_descriptions)}/{len(descriptions)}")
-        print(f"  - Merge performed: {'Yes' if merge_result.get('success', False) if 'merge_result' in locals() else False else 'No'}")
-        print(f"  - Translation performed: {'Yes' if translation_result.success if 'translation_result' in locals() else False else 'No'}")
+        print(f"  - Merge performed: {'Yes' if 'merge_result' in locals() and merge_result.get('success', False) else 'No'}")
+        print(f"  - Translation performed: {'Yes' if 'translation_result' in locals() and translation_result.success else 'No'}")
         
         print("\\n📋 Generated SQL (first 10 lines):")
         print("-" * 50)
@@ -343,8 +343,8 @@ def advanced_example():
             "execution_time": execution_time,
             "variants_count": len(variants),
             "relevant_descriptions": len(relevant_descriptions),
-            "merge_performed": merge_result.get("success", False) if 'merge_result' in locals() else False,
-            "translation_performed": translation_result.success if 'translation_result' in locals() else False
+            "merge_performed": 'merge_result' in locals() and merge_result.get("success", False),
+            "translation_performed": 'translation_result' in locals() and translation_result.success
         }
         
     except Exception as e:
@@ -513,9 +513,9 @@ def error_handling_example():
         complex_prompt = "Create a very complex query with multiple subqueries and CTEs for data analysis"
         
         sql_config = SQLGenerationConfig(
-            dialect=SQLDialect.POSTGRESQL,
-            include_comments=True,
-            max_length=1000  # Intentionally low to test limits
+            model_name="microsoft/phi-4-mini-instruct",
+            max_new_tokens=100,  # Intentionally low to test limits
+            temperature=0.1
         )
         
         sql_generator = SQLLLMGenerator(config=sql_config, dialect=SQLDialect.POSTGRESQL)
@@ -549,8 +549,8 @@ def error_handling_example():
         try:
             result = translator.translate(
                 sql_query=invalid_sql,
-                target_dialect=TranslatorDialect.POSTGRESQL,
-                source_dialect=TranslatorDialect.GENERIC
+                target_dialect=TranslatorDialect.POSTGRES,
+                source_dialect="generic"
             )
             
             if not result.success:
